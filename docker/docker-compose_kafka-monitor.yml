@@ -1,0 +1,45 @@
+services:
+  schema-registry:
+    image: confluentinc/cp-schema-registry:7.4.0
+    hostname: ${KAFKA_SCHREG_CONT_NAME}
+    container_name: ${KAFKA_SCHREG_CONT_NAME}   
+    environment:
+      SCHEMA_REGISTRY_HOST_NAME: ${KAFKA_SCHREG_CONT_NAME}
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: '${KAFKA_BROKER_CONT_NAME}:${KAFKA_BROKER_LISTEN_EXT_PORT}'
+      SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:${KAFKA_SCHREG_PORT}
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://${HOST}:${KAFKA_SCHREG_PORT}/" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    ports:
+      - "${KAFKA_SCHREG_PORT}:${KAFKA_SCHREG_PORT}"
+    depends_on:
+      broker:
+        condition: service_healthy
+     
+  control-center:
+    image: confluentinc/cp-enterprise-control-center:7.4.0
+    hostname: ${KAFKA_CC_CONT_NAME}
+    container_name: ${KAFKA_CC_CONT_NAME}
+    environment:
+      CONTROL_CENTER_BOOTSTRAP_SERVERS: '${KAFKA_BROKER_CONT_NAME}:${KAFKA_BROKER_LISTEN_EXT_PORT}'
+      CONTROL_CENTER_SCHEMA_REGISTRY_URL: "http://${KAFKA_SCHREG_CONT_NAME}:${KAFKA_SCHREG_PORT}"
+      CONTROL_CENTER_REPLICATION_FACTOR: 1
+      CONTROL_CENTER_INTERNAL_TOPICS_PARTITIONS: 1
+      CONTROL_CENTER_MONITORING_INTERCEPTOR_TOPIC_PARTITIONS: 1
+      CONFLUENT_METRICS_TOPIC_REPLICATION: 1
+      CONFLIENT_METRICS_ENABLE: 'false'
+      PORT: ${KAFKA_CC_PORT}
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://${HOST}:${KAFKA_CC_PORT}/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    ports:
+      - "${KAFKA_CC_PORT}:${KAFKA_CC_PORT}"
+    depends_on:
+      broker:
+        condition: service_healthy
+      schema-registry:
+        condition: service_healthy   

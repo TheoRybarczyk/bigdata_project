@@ -1,0 +1,27 @@
+FROM ubuntu:latest
+
+RUN apt-get update
+RUN apt-get install -y wget
+RUN apt-get install -y python3
+RUN apt-get install -y python3-pip
+
+RUN pip install requests pandas
+
+# Get Grafana
+RUN wget https://dl.grafana.com/enterprise/release/grafana-enterprise-10.2.3.linux-amd64.tar.gz
+RUN tar -zxvf grafana-enterprise-10.2.3.linux-amd64.tar.gz
+WORKDIR grafana-v10.2.3
+
+# Get plugins
+#RUN chmod +x bin/grafana
+#RUN ./bin/grafana cli --pluginsDir "data/plugins" plugins install yesoreyeram-infinity-datasource
+
+# For Grafana setup
+RUN mkdir /setup
+COPY scripts/grafana_setup.py /setup
+COPY data/dashboard.json /setup
+
+EXPOSE 3000
+
+ENTRYPOINT ./bin/grafana server
+

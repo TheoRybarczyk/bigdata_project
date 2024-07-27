@@ -1,0 +1,139 @@
+services:
+  datastream:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.datastream
+    container_name: ${DATASTREAM_CONT_NAME}
+    environment:
+      KAFKA_BROKER_CONT_NAME: "${KAFKA_BROKER_CONT_NAME}"
+      KAFKA_BROKER_LISTEN_EXT_PORT: "${KAFKA_BROKER_LISTEN_EXT_PORT}"
+      KAFKA_TOPIC: "${KAFKA_TOPIC}"
+      STREAMING_TIME_DELTA: ${STREAMING_TIME_DELTA}
+    ports:
+      - "${DATASTREAM_FLASK_PORT}:${DATASTREAM_FLASK_PORT}"
+    depends_on:
+      broker:
+        condition: service_healthy
+
+  zookeeper:
+      image: confluentinc/cp-zookeeper:7.4.0
+      hostname: ${KAFKA_ZOOKPR_CONT_NAME}
+      container_name: ${KAFKA_ZOOKPR_CONT_NAME}  
+      environment:
+        ZOOKEEPER_CLIENT_PORT: ${KAFKA_ZOOKPR_PORT}
+        ZOOKEEPER_TICK_TIME: 2000
+      ports:
+        - "${KAFKA_ZOOKPR_PORT}:${KAFKA_ZOOKPR_PORT}"
+      healthcheck:
+        test: ['CMD', 'bash', '-c', "echo 'ruok' | nc ${HOST} ${KAFKA_ZOOKPR_PORT}"]
+        interval: 10s
+        timeout: 5s
+        retries: 5
+
+  broker:
+    image: confluentinc/cp-server:7.4.0
+    hostname: ${KAFKA_BROKER_CONT_NAME}
+    container_name: ${KAFKA_BROKER_CONT_NAME}
+    environment:
+      KAFKA_BROKER_ID: 1
+      GROUP_ID : valdom
+      KAFKA_ZOOKEEPER_CONNECT: '${KAFKA_ZOOKPR_CONT_NAME}:${KAFKA_ZOOKPR_PORT}'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://${KAFKA_BROKER_CONT_NAME}:${KAFKA_BROKER_LISTEN_EXT_PORT},PLAINTEXT_HOST://${HOST}:${KAFKA_BROKER_LISTEN_CLIENT_PORT}
+      KAFKA_METRIC_REPORTERS: io.confluent.metrics.reporter.ConfluentMetricsReporter
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_CONFLUENT_LICENSE_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_CONFLUENT_BALANCER_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_JMX_PORT: ${KAFKA_BROKER_JMX_PORT}
+      KAFKA_JMX_HOSTNAME: ${HOST}
+      KAFKA_CONFLUENT_SCHEMA_REGISTRY_URL: http://${KAFKA_SCHREG_CONT_NAME}:${KAFKA_SCHREG_PORT}
+      CONFLUENT_METRICS_REPORTER_BOOTSTRAP_SERVERS: ${KAFKA_BROKER_CONT_NAME}:${KAFKA_BROKER_LISTEN_EXT_PORT}
+      CONFLUENT_METRICS_REPORTER_TOPIC_REPLICAS: 1
+      CONFLUENT_METRICS_ENABLE: 'false'
+      CONFLUENT_SUPPORT_CUSTOMER_ID: 'anonymous'
+    ports:
+      - "${KAFKA_BROKER_LISTEN_CLIENT_PORT}:${KAFKA_BROKER_LISTEN_CLIENT_PORT}"
+      - "${KAFKA_BROKER_JMX_PORT}:${KAFKA_BROKER_JMX_PORT}"
+    healthcheck:
+      test: [ "CMD", "bash", "-c", 'nc -z ${HOST} ${KAFKA_BROKER_LISTEN_CLIENT_PORT}' ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    depends_on:
+      zookeeper:
+        condition: service_healthy 
+
+  spark-master:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.spark
+    container_name: ${SPARK_MASTER_CONT_NAME}  
+    environment:
+      SPARK_MODE: master
+      SPARK_MASTER_CORES: 1
+      KAFKA_BROKER_CONT_NAME: "${KAFKA_BROKER_CONT_NAME}"
+      KAFKA_BROKER_LISTEN_EXT_PORT: ${KAFKA_BROKER_LISTEN_EXT_PORT}
+      KAFKA_TOPIC: "${KAFKA_TOPIC}"
+      INFLUXDB_CONT_NAME: "${INFLUXDB_CONT_NAME}"
+      INFLUXDB_PORT: "${INFLUXDB_PORT}"
+      INFLUXDB_ORG: "${INFLUXDB_ORG}"
+      INFLUXDB_BUCKET: "${INFLUXDB_BUCKET}"
+      HOST: "${HOST}"
+      KAFKA_BROKER_LISTEN_CLIENT_PORT: ${KAFKA_BROKER_LISTEN_CLIENT_PORT}
+    ports:
+      - "${SPARK_MASTER_WEBUI_PORT}:${SPARK_MASTER_WEBUI_PORT}"
+      - "${SPARK_MASTER_SERV_PORT}:${SPARK_MASTER_SERV_PORT}"
+    command: bin/spark-class org.apache.spark.deploy.master.Master
+    depends_on:
+      - broker
+      - influxdb
+  
+  spark-worker:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.spark
+    deploy:
+      mode: replicated
+      replicas: ${SPARK_WORKER_NUMBER}
+    environment:
+      SPARK_MODE: worker
+      SPARK_WORKER_CORES: 1
+      SPARK_WORKER_MEMORY: 1g
+      SPARK_MASTER_URL: spark://${SPARK_MASTER_CONT_NAME}:${SPARK_MASTER_SERV_PORT}
+    command: bin/spark-class org.apache.spark.deploy.worker.Worker spark://${SPARK_MASTER_CONT_NAME}:${SPARK_MASTER_SERV_PORT}
+    depends_on:
+      - spark-master
+
+  influxdb:
+    image: influxdb:latest
+    container_name: ${INFLUXDB_CONT_NAME}
+    volumes:
+      - influxVolume:/var/lib/${INFLUXDB_CONT_NAME}
+    ports:
+      - "${INFLUXDB_PORT}:${INFLUXDB_PORT}"
+
+  grafana:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.grafana
+    container_name: ${GRAFANA_CONT_NAME}   
+    environment:
+      GRAFANA_PORT: ${GRAFANA_PORT}
+      GRAFANA_USER: "${GRAFANA_USER}"
+      GRAFANA_PASS: "${GRAFANA_PASS}"
+      INFLUXDB_CONT_NAME: "${INFLUXDB_CONT_NAME}"
+      INFLUXDB_PORT: ${INFLUXDB_PORT}
+      INFLUXDB_ORG: "${INFLUXDB_ORG}"
+      INFLUXDB_BUCKET: "${INFLUXDB_BUCKET}"
+    ports:
+      - "${GRAFANA_PORT}:${GRAFANA_PORT}"
+    depends_on:
+      - influxdb
+  
+volumes:
+  influxVolume:
+     name: influxVolume
+

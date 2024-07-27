@@ -1,0 +1,5 @@
+FROM bitnami/spark:3.5.0
+
+RUN pip install pandas pyspark kafka-python influxdb_client
+
+COPY scripts/spark_app.py /opt/bitnami/spark

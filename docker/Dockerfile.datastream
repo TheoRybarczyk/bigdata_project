@@ -1,0 +1,19 @@
+FROM ubuntu:latest
+
+RUN apt-get update && apt-get install -y curl
+RUN apt-get install -y wget
+RUN apt-get install -y python3
+RUN apt-get install -y python3-pip
+
+RUN pip install pandas kafka-python flask
+
+# For Grafana setup
+RUN mkdir /app
+RUN mkdir /app/data
+COPY scripts/streamer.py /app
+COPY data/H_31_latest-2023-2024.csv /app/data
+
+EXPOSE 5000
+
+ENTRYPOINT ["python3", "/app/streamer.py"]
+
