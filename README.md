@@ -1,4 +1,4 @@
-# PROJET BIG DATA METEO
+# PROJECT: BIG DATA WEATHER
 This project aims at displaying meteo data streamed through a datapipeline. The chosen data is hourly weather measurements from Haute Garonne during year 2023. Kafka is to be used for streaming data to Spark (Pyspark in that case). As the amount of data is limited, HDFS will not be configured and Influx DB will store data, requested for vizualisation on Grafana. 
 
 _Authors: Grégory Bimbault, Théo Rybarczyk_
